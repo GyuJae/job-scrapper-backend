@@ -11,21 +11,95 @@ import (
 	"github.com/gyujae/jobscrapper_backend/utils"
 )
 
-// var koreaWebsites = map[string]string{
-// 	"사람인":  "https://www.saramin.co.kr/zf_user/",
-// 	"잡코리아": "https://www.jobkorea.co.kr/",
-// 	"커리어":  "https://www.career.co.kr/Default.asp",
-// 	"인크루트": "https://www.incruit.com/",
-// 	"피플앤잡": "https://www.peoplenjob.com/jobs",
-// }
+var koreaWebsites = map[string]string{
+	"사람인":  "https://www.saramin.co.kr/",
+	"잡코리아": "https://www.jobkorea.co.kr",
+}
+
+type Job struct {
+	ID        string `json:"id"`
+	Title     string `json:"title"`
+	Company   string `json:"company"`
+	Condition string `json:"condition"`
+	URL       string `json:"url"`
+	Site      string `json:"site"`
+}
 
 func main() {
-	pages := getPagination("python", "원티드")
-	fmt.Println(pages)
+	var jobs []Job
+	totalPage := getPagination("python", "잡코리아")
+	c := make(chan []Job)
+	for i := 1; i <= totalPage; i++ {
+		go getJobData("python", "잡코리아", i, c)
+	}
+	for i := 1; i <= totalPage; i++ {
+		jobData := <-c
+		jobs = append(jobs, jobData...)
+	}
+	fmt.Println(jobs)
+}
+
+func getJobData(query string, website string, pageNum int, mainC chan<- []Job) {
+	var jobs []Job
+	c := make(chan Job)
+	switch website {
+
+	case "사람인":
+		keywordURL := "https://www.saramin.co.kr/zf_user/search/recruit?search_area=main&search_done=y&search_optional_item=n&searchType=search&searchword=" + query + "&recruitPage=" + strconv.Itoa(pageNum) + "&recruitSort=relation&recruitPageCount=40&inner_com_type=&company_cd=0%2C1%2C2%2C3%2C4%2C5%2C6%2C7%2C9%2C10&show_applied=&quick_apply=&except_read=&mainSearch=n"
+		doc := getDocument(keywordURL)
+		jobCard := doc.Find(".item_recruit")
+		jobCard.Each(func(i int, s *goquery.Selection) {
+			go extractedJobData(s, c, website)
+		})
+		for i := 0; i < jobCard.Length(); i++ {
+			jobData := <-c
+			jobs = append(jobs, jobData)
+		}
+		mainC <- jobs
+
+	case "잡코리아":
+		keywordURL := "https://www.jobkorea.co.kr/Search/?stext=" + query + "&Page_No=" + strconv.Itoa(pageNum)
+		doc := getDocument(keywordURL)
+		jobCard := doc.Find(".list-default .clear")
+		jobCard.Each(func(i int, s *goquery.Selection) {
+			go extractedJobData(s, c, website)
+		})
+		for i := 0; i < jobCard.Length(); i++ {
+			jobData := <-c
+			jobs = append(jobs, jobData)
+		}
+		mainC <- jobs
+
+	}
+}
+
+func extractedJobData(s *goquery.Selection, c chan<- Job, website string) {
+	switch website {
+
+	case "사람인":
+		id, _ := s.Attr("value")
+		title, _ := s.Find("a.data_layer").Attr("title")
+		url, _ := s.Find("a.data_layer").Attr("href")
+		url = koreaWebsites[website] + url
+		company := s.Find(".area_corp .corp_name").Text()
+		condition := cleanString(s.Find(".job_condition").Text())
+		c <- Job{ID: id, Title: title, Company: company, Condition: condition, URL: url, Site: website}
+
+	case "잡코리아":
+		id, _ := s.Find(".list-post").Attr("data-gno")
+		company, _ := s.Find(".post a.name.dev_view").Attr("title")
+		title, _ := s.Find(".post .post-list-info a.title.dev_view").Attr("title")
+		url, _ := s.Find(".post .post-list-info a.title.dev_view").Attr("href")
+		url = koreaWebsites[website] + url
+		condition := cleanString(s.Find(".post .post-list-info p.option").Text())
+		c <- Job{ID: id, Title: title, Company: company, Condition: condition, URL: url, Site: website}
+
+	}
 }
 
 func getPagination(query string, website string) int {
 	switch website {
+
 	case "사람인":
 		keywordURL := "https://www.saramin.co.kr/zf_user/search/recruit?search_area=main&search_done=y&search_optional_item=n&searchType=search&searchword=" + query + "&recruitPage=1&recruitSort=relation&recruitPageCount=100&inner_com_type=&company_cd=0%2C1%2C2%2C3%2C4%2C5%2C6%2C7%2C9%2C10&show_applied=&quick_apply=&except_read=&mainSearch=n"
 		doc := getDocument(keywordURL)
@@ -35,41 +109,14 @@ func getPagination(query string, website string) int {
 		result, err := strconv.Atoi(strings.Replace(submatchall[0], ",", "", 1))
 		utils.CheckErr(err)
 		return getPageCeil(result, 100)
+
 	case "잡코리아":
 		keywordURL := "https://www.jobkorea.co.kr/Search/?stext=" + query
-		fmt.Println(keywordURL)
 		doc := getDocument(keywordURL)
 		count := doc.Find("#content div div div.cnt-list-wrap div div.recruit-info div.list-filter-wrap p strong").Text()
 		result, err := strconv.Atoi(strings.Replace(count, ",", "", 1))
 		utils.CheckErr(err)
 		return getPageCeil(result, 20)
-	case "커리어":
-		keywordURL := "https://search.career.co.kr/jobs?kw=" + query
-		fmt.Println(keywordURL)
-		doc := getDocument(keywordURL)
-		count := doc.Find("#container div div div div div.totSehWrap div.totSehLt div.txContBoxWrap.clearfix div div.txTit.MT45 small").Text()
-		re := regexp.MustCompile(`[-]?\d[\d,]*[\.]?[\d{2}]*`)
-		result, err := strconv.Atoi(re.FindAllString(count, -1)[0])
-		utils.CheckErr(err)
-		return getPageCeil(result, 10)
-	case "인크루트":
-		keywordURL := "https://search.incruit.com/list/search.asp?col=job&il=y&kw=" + query
-		fmt.Println(keywordURL)
-		doc := getDocument(keywordURL)
-		count := doc.Find("#content div.section h2 span.numall").Text()
-		re := regexp.MustCompile(`[-]?\d[\d,]*[\.]?[\d{2}]*`)
-		result, err := strconv.Atoi(re.FindAllString(count, -1)[0])
-		utils.CheckErr(err)
-		return getPageCeil(result, 20)
-	case "피플앤잡":
-		keywordURL := "https://www.peoplenjob.com/jobs?field=all&q=" + query
-		fmt.Println(keywordURL)
-		doc := getDocument(keywordURL)
-		count := doc.Find("#content-main div div.page-header div.page-title div span").Text()
-		re := regexp.MustCompile(`[-]?\d[\d,]*[\.]?[\d{2}]*`)
-		result, err := strconv.Atoi(re.FindAllString(count, -1)[0])
-		utils.CheckErr(err)
-		return getPageCeil(result, 50)
 	}
 
 	return -1
@@ -91,4 +138,8 @@ func getDocument(keywordURL string) *goquery.Document {
 	utils.CheckErr(err)
 
 	return doc
+}
+
+func cleanString(str string) string {
+	return strings.Join(strings.Fields(strings.TrimSpace(str)), " ")
 }
