@@ -22,28 +22,38 @@ func Start(port string) {
 		}
 		if len(scrapper.Websites) == 0 {
 			return c.Status(404).JSON(&fiber.Map{
-				"success": false,
-				"error":   "There are no jobs!",
+				"ok":    false,
+				"sites": nil,
+				"error": "There are no jobs!",
 			})
 		}
 		return c.JSON(&fiber.Map{
-			"success": true,
-			"sites":   sites,
+			"ok":    true,
+			"sites": sites,
+			"error": nil,
 		})
 	})
 
 	app.Get("/:keyword", func(c *fiber.Ctx) error {
 		keyword := c.Params("keyword")
-		jobs := scrapper.JobScrapperMain(keyword)
+		jobs := scrapper.SplitJobsBySite(keyword)
 		if len(jobs) == 0 {
 			return c.Status(404).JSON(&fiber.Map{
-				"success": false,
-				"error":   "There are no jobs!",
+				"ok":        false,
+				"error":     "There are no jobs!",
+				"jobs":      nil,
+				"totalJobs": 0,
 			})
 		}
+		totalJobs := 0
+		for _, siteJobs := range jobs {
+			totalJobs += len(siteJobs)
+		}
 		return c.JSON(&fiber.Map{
-			"success": true,
-			"jobs":    jobs,
+			"ok":        true,
+			"jobs":      jobs,
+			"totalJobs": totalJobs,
+			"error":     nil,
 		})
 	})
 
