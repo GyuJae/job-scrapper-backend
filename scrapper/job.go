@@ -11,9 +11,13 @@ import (
 )
 
 var Websites = map[string]string{
-	"사람인":    "https://www.saramin.co.kr",
-	"잡코리아":   "https://www.jobkorea.co.kr",
-	"indeed": "https://kr.indeed.com/",
+	"사람인":  "https://www.saramin.co.kr",
+	"잡코리아": "https://www.jobkorea.co.kr",
+}
+
+var WebsitesImages = map[string]string{
+	"사람인":  "https://yt3.ggpht.com/ytc/AKedOLRnfuHawFrOlV0V9g7U2-AsqEYmqTYA7CFBlxqViQ=s900-c-k-c0x00ffffff-no-rj",
+	"잡코리아": "https://image.edaily.co.kr/images/Photo/files/NP/S/2020/11/PS20111000013.gif",
 }
 
 type JobRest map[string][]Job
@@ -121,6 +125,7 @@ func getJobData(query string, website string, pageNum int, mainC chan<- []Job) {
 			jobs = append(jobs, jobData)
 		}
 		mainC <- jobs
+
 	}
 }
 
@@ -155,6 +160,7 @@ func extractedJobData(s *goquery.Selection, c chan<- Job, website string) {
 		if title != "" {
 			c <- Job{ID: id, Title: title, Company: company, Condition: condition, URL: url, Site: website}
 		}
+
 	}
 }
 
@@ -163,6 +169,9 @@ func getPagination(query string, website string) int {
 	case "사람인":
 		keywordURL := "https://www.saramin.co.kr/zf_user/search/recruit?search_area=main&search_done=y&search_optional_item=n&searchType=search&searchword=" + query + "&recruitPage=1&recruitSort=relation&recruitPageCount=100&inner_com_type=&company_cd=0%2C1%2C2%2C3%2C4%2C5%2C6%2C7%2C9%2C10&show_applied=&quick_apply=&except_read=&mainSearch=n"
 		doc := getDocument(keywordURL)
+		if doc == nil {
+			return -1
+		}
 		count := doc.Find("#recruit_info div.header span").Text()
 		count = cleanString(count)
 		if count == "" {
@@ -182,6 +191,9 @@ func getPagination(query string, website string) int {
 	case "잡코리아":
 		keywordURL := "https://www.jobkorea.co.kr/Search/?stext=" + query
 		doc := getDocument(keywordURL)
+		if doc == nil {
+			return -1
+		}
 		count := doc.Find("#content div div div.cnt-list-wrap div div.recruit-info div.list-filter-wrap p strong").Text()
 		count = cleanString(count)
 		if count == "" {
@@ -193,6 +205,9 @@ func getPagination(query string, website string) int {
 	case "indeed":
 		keywordURL := "https://kr.indeed.com/jobs?q=" + query + "&limit=50&start=0"
 		doc := getDocument(keywordURL)
+		if doc == nil {
+			return -1
+		}
 		count := doc.Find("#searchCountPages").Text()
 		count = cleanString(count)
 		if count == "" {
@@ -209,6 +224,7 @@ func getPagination(query string, website string) int {
 		result, err := strconv.Atoi(strings.Replace(submatchall[1], ",", "", 1))
 		utils.CheckErr(err)
 		return getPageCeil(result, 50)
+
 	}
 	return -1
 }
